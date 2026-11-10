@@ -1,0 +1,72 @@
+name: Bump blop formula
+
+# Keeps Formula/blop.rb on the newest @blopai/cli published to npm.
+# Runs daily, and on demand after a release. The release itself happens in
+# blop-oss/blop-app (tag blop-v*), so this repo only follows the registry.
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bump-blop-formula
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the newest published version
+        id: latest
+        run: |
+          set -euo pipefail
+          META="$(curl -fsSL https://registry.npmjs.org/@blopai/cli/latest)"
+          VERSION="$(printf '%s' "$META" | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')"
+          TARBALL="$(printf '%s' "$META" | python3 -c 'import json,sys; print(json.load(sys.stdin)["dist"]["tarball"])')"
+          SHA="$(curl -fsSL "$TARBALL" | sha256sum | cut -d' ' -f1)"
+          CURRENT="$(grep -oE 'cli-[0-9]+\.[0-9]+\.[0-9]+\.tgz' Formula/blop.rb | head -1 | sed -E 's/^cli-(.*)\.tgz$/\1/')"
+          echo "npm latest:  $VERSION"
+          echo "formula pin: ${CURRENT:-none}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          echo "current=${CURRENT:-none}" >> "$GITHUB_OUTPUT"
+
+      - name: Rewrite url and sha256
+        if: steps.latest.outputs.version != steps.latest.outputs.current
+        env:
+          VERSION: ${{ steps.latest.outputs.version }}
+          SHA256: ${{ steps.latest.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          python3 - "$VERSION" "$SHA256" <<'PY'
+          import re, sys, pathlib
+          version, sha = sys.argv[1], sys.argv[2]
+          path = pathlib.Path("Formula/blop.rb")
+          text = path.read_text()
+          text = re.sub(
+              r'url "https://registry\.npmjs\.org/@blopai/cli/-/cli-[0-9]+\.[0-9]+\.[0-9]+\.tgz"',
+              f'url "https://registry.npmjs.org/@blopai/cli/-/cli-{version}.tgz"',
+              text,
+          )
+          text = re.sub(r'sha256 "[0-9a-f]{64}"', f'sha256 "{sha}"', text)
+          path.write_text(text)
+          PY
+          git diff -- Formula/blop.rb
+
+      - name: Commit and push
+        if: steps.latest.outputs.version != steps.latest.outputs.current
+        env:
+          VERSION: ${{ steps.latest.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "blop-oss bot"
+          git config user.email "bot@blopai.com"
+          git add Formula/blop.rb
+          git commit -m "blop ${VERSION}"
+          git push
