@@ -1,8 +1,8 @@
 class Blop < Formula
   desc "Local-first OpenTelemetry observability CLI for coding agents"
   homepage "https://github.com/blop-oss/blop-app/tree/main/packages/blop"
-  url "https://registry.npmjs.org/@blopai/cli/-/cli-1.9.0.tgz"
-  sha256 "02978a5f41a98745720514b99c366156ea3897c2bda1706bc18a769a16c6fe22"
+  url "https://registry.npmjs.org/@blopai/cli/-/cli-1.11.2.tgz"
+  sha256 "1f133b58efa8128015039f6f66e2fe38452129ad6ae12efefa57a5b753146630"
   license "MIT"
 
   depends_on "node"
